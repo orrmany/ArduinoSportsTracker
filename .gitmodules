@@ -1,0 +1,3 @@
+[submodule "lib/SDAntplus"]
+	path = lib/SDAntplus
+	url = https://github.com/orrmany/SDAntplus.git
