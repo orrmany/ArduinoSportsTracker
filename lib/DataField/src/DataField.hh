@@ -1,3 +1,32 @@
+/*
+MIT License
+
+Copyright (c) 2020 Gábor Ziegler 
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software. The notifications about the 
+legal requirements of adhering to the Nordic Semiconductor ASA and the
+thisiant.com licensing terms shall be included.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+/*
+** Classes for handling various Adafruit_GFX compatible displays. Currently,
+** the Adafruit miniTFT with joystick Header Wing and  the Nokia 5110 LCD-s
+*/
 #ifndef DATAFIELD_H
 #define DATAFIELD_H
 #include <stdint.h>
@@ -9,7 +38,8 @@
 #define GFX_FONT_X 6
 #define GFX_FONT_Y 8
 
-// Class to represent a field printable via Adafruit_GFX
+/// Class to represent a generic field printable via Adafruit_GFX
+/// to some display.
 class PrintField
 {
 public:
@@ -52,26 +82,13 @@ public:
     void display(void);
     void setContentLeft(String p_content) {setContentPadRight(p_content, ' ');}
     void setContentRight(String p_content) {setContentPadLeft(p_content, ' ');}
-    void setContentPadRight(String p_content, const char p_padchar=' ') {
-        if (p_content.length() > columns)
-            p_content.remove(columns);
-        content=p_content;
-        //pad content
-        for (uint8_t i = content.length(); i < columns; i++)
-        {
-            content += p_padchar;
-        }
-    }
-    void setContentPadLeft(String p_content, const char p_padchar=' ') {
-        if (p_content.length() > columns)
-            p_content.remove(columns);
-        content = "";
-        //pad content
-        for (uint8_t i = 0; i < columns - p_content.length();  i++)
-        {
-            content += p_padchar;
-        }
-        content +=p_content;
+    void setContentPadRight(String p_content, const char p_padchar=' ');
+    void setContentPadLeft(String p_content, const char p_padchar=' ') ;
+    void invertColor(void) {
+        uint16_t tmp = fgColor;
+        fgColor = bgColor;
+        bgColor = tmp;
+        display();
     }
     uint16_t getFgColor(void) {return fgColor;}
 
@@ -91,48 +108,74 @@ protected:
     String content;         //< content
     Adafruit_GFX* _prt;     //< the Print object
 };
-void PrintField::display(void)
-{
-    _prt->setTextSize(xtextSize, ytextSize);
-    _prt->setCursor(cursorX, cursorY);
-    _prt->setTextColor(fgColor, bgColor);
-    _prt->print(content);
-}
 
 
+/// Struct for attributes of a two lines data field. Bakcground color and
+/// is uniform across the field, but desc. and data subfields stretch independently
+/// Beware, that height is assumed determined by the data sub-field, so do not
+/// set bigger vertical stretching for desc. than for the data
 typedef struct
 {
-    uint16_t dataColor ;     //< fg. color. 
-    uint16_t descriptionColor ;     //< fg. color. 
-    uint16_t bgColor;
-    uint8_t displayRow = 0;     //< display row: 1, or 2
-    uint8_t displayCol = 0; //< dislay col, default 0;
-    uint8_t xFieldScale =3;  //< only for 
-    uint8_t yFieldScale = 3;  //< only for 
-    uint8_t xDescScale = 1;  //< only for 
-    uint8_t yDescScale = 1;  //< only for 
+    uint16_t dataColor;        //< txt. color of the data field
+    uint16_t descriptionColor; //< txt. color for desc. field
+    uint16_t bgColor;          //< shared bg. color of both fields
+    uint8_t displayRow = 0;    //< display row# assuming identical fields everywhere on display
+    uint8_t displayCol = 0;    //< dislay column# assuming identical fields everywhere on display
+    uint8_t xFieldScale = 3;   //< horizontal pixel stretching factor for data (ADafruit_GFX default font is 6x8 px) 
+    uint8_t yFieldScale = 3;   //< vertical pixel stretching factor for data
+    uint8_t xDescScale = 1;    //< vertical pixel stretching factor for description
+    uint8_t yDescScale = 1;    //< horizontal pixel stretching factor for description
 } TwoLineFieldDescriptor;
+
+/// Struct for attributes of a one line data field. Bakcground color and
+/// horizontal px stretching is uniform across the field 
 typedef struct
 {
-    uint16_t dataColor ;     //< fg. color. 
-    uint16_t descriptionColor ;     //< fg. color. 
-    uint16_t bgColor;
-    uint8_t displayRow = 0;     //< display row: 1, or 2
-    uint8_t displayCol = 0; //< dislay col, default 0;
-    uint8_t xScale =2;  //< only for 
-    uint8_t yFieldScale = 2;  //< only for 
-    uint8_t yDescScale = 1;  //< only for 
+    uint16_t dataColor;        //< txt. color of the data field
+    uint16_t descriptionColor; //< txt. color for desc. field
+    uint16_t bgColor;          //< shared bg. color of both fields
+    uint8_t displayRow = 0;    //< display row# assuming identical fields everywhere on display
+    uint8_t displayCol = 0;    //< dislay column# assuming identical fields everywhere on display
+    uint8_t xScale = 2;        //< horizontal pixel stretching factor (ADafruit_GFX default font is 6x8 px) 
+    uint8_t yFieldScale = 2;   //< vertical pixel stretching factor for the data field part 
+    uint8_t yDescScale = 1;    //< vertical pixel stretching factor for the desc.  field part 
 } OneLineFieldDescriptor;
 
-
-class TwoLineDataField
+/// Abstract base class for DataFields
+class DataField
 {
-private:
+protected:
     PrintField fieldDescription;
     PrintField fieldContent;
     bool hasFrame;
     Adafruit_GFX* _disp;
 
+public:
+     uint16_t getOrigoX(void) { return fieldDescription.getOrigoX(); }
+     uint16_t getOrigoY(void) { return fieldDescription.getOrigoY(); }
+     virtual uint16_t getWidthInPx(void) =0; 
+     virtual uint16_t getHeightInPx(void) =0; 
+    //draw frame only at bottom & right 
+    virtual void drawFrame() =0;
+    void reprint(void); //reprints the entire datafield
+    virtual void refreshContent(void); //reprints only the content
+    virtual void updateContentLeft(String p_content, const char p_padding = ' ') {setContentLeft(p_content, p_padding); refreshContent();}
+    virtual void updateContentRight(String p_content, const char p_padding = ' ') {setContentRight(p_content, p_padding); refreshContent();}
+    virtual void setContentLeft(String p_content, const char p_padding = ' ') {fieldContent.setContentPadRight(p_content, p_padding);}
+    virtual void setContentRight(String p_content, const char p_padding = ' ') {fieldContent.setContentPadLeft(p_content,  p_padding);}
+    virtual void setDescriptionLeft(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadRight(p_content, p_padding);}
+    virtual void setDescriptionRight(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadLeft(p_content, p_padding);}
+    virtual void invertColors(void); 
+
+    //~DataField();
+};
+
+/// Two lines data field: description field comes above the datafield.
+/// Description field is usually 1/2, or 1/3 tall compared to datafield. 
+/// Height is the heights of the two fields summed up. Width is determined
+/// by the data field. Too long desc. labels are truncated sliently.
+class TwoLineDataField : public DataField
+{
 public:
     TwoLineDataField(
         String p_desc,                  //< the description of the data field
@@ -142,92 +185,20 @@ public:
         Adafruit_GFX *p_disp,            //pointer to display
         bool p_HasFrame =false
     );
-    uint16_t getOrigoX(void) { return fieldDescription.getOrigoX(); }
-    uint16_t getOrigoY(void) { return fieldDescription.getOrigoY(); }
-    uint16_t getWidthInPx(void) { return fieldContent.getWidthInPx(); }
-    uint16_t getHeightInPx(void) { return fieldContent.getHeightInPx() + fieldDescription.getHeightInPx(); }
     //draw frame only at bottom & right 
-     void drawFrame()
-    {
-        uint16_t
-            //lower left corner 1px up
-            xLL = getOrigoX(),
-            yLL = getOrigoY() + getHeightInPx() - 2,
-            //lower right corner 1px left 1px up
-            xLR = getOrigoX() + getWidthInPx() - 2,
-            yLR = getOrigoY() + getHeightInPx() - 2,
-            //upper right corner 1px left
-            xUR = getOrigoX() + getWidthInPx() - 2,
-            yUR = getOrigoY();
-        _disp->drawLine(xLL, yLL, xLR, yLR, fieldDescription.getFgColor());
-        _disp->drawLine(xUR, yUR, xLR, yLR, fieldDescription.getFgColor());
-    }
-
-  void reprint(void) //reprints the entire datafield
-        {
-            fieldDescription.display();
-            fieldContent.display(); 
-            if (hasFrame) drawFrame();
-        }
-    void refreshContent(void) //reprints only the content
-        {
-            fieldContent.display(); 
-            if (hasFrame) drawFrame();
-        }
-    void setContentLeft(String p_content, const char p_padding = ' ') {fieldContent.setContentPadRight(p_content, p_padding);}
-    void setContentRight(String p_content, const char p_padding = ' ') {fieldContent.setContentPadLeft(p_content,  p_padding);}
-    void setDescriptionLeft(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadRight(p_content, p_padding);}
-    void setDescriptionRight(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadLeft(p_content, p_padding);}
-
+    virtual void drawFrame();
+    virtual uint16_t getWidthInPx(void) { return fieldContent.getWidthInPx(); }
+    virtual uint16_t getHeightInPx(void) { return fieldContent.getHeightInPx() + fieldDescription.getHeightInPx(); }
+    
     //~TwoLineDataField();
 };
 
 
-TwoLineDataField::TwoLineDataField(
-    String p_desc,                  //< the description of the data field
-    String p_field,                 //< the initial content of the datafield.
-                                    //  Note: it will determine the width of the field
-    TwoLineFieldDescriptor p_dispField, //< the type of the dataField
-    Adafruit_GFX *p_disp,            //pointer to display
-        bool p_hasFrame
-        )
+/// One line data field: description field comes in front of the datafield
+/// Description field is same height compared to datafield, but usually 
+/// much shorter. Width=description+data, height is determined by the datafield.
+class OneLineDataField : public DataField
 {
-    uint16_t origoX= p_dispField.displayCol * GFX_FONT_X * p_dispField.xFieldScale;
-    uint16_t origoY= p_dispField.displayRow * (p_dispField.yDescScale + p_dispField.yFieldScale) * GFX_FONT_Y;
-    if (p_desc.length()*p_dispField.xDescScale > p_field.length()*p_dispField.xFieldScale) p_desc.remove(p_field.length()*p_dispField.xFieldScale/p_dispField.xDescScale);
-
-    fieldDescription = PrintField(origoX //cursorX
-                                , origoY //cursorY
-                                , p_field.length() * p_dispField.xFieldScale  /  p_dispField.xDescScale //columns are 1/3 for desc than that of data
-                                , p_dispField.xDescScale //textsize
-                                , p_dispField.yDescScale
-                                , p_dispField.descriptionColor //fgColor, almost black on TFT, black on LCD
-                                , p_dispField.bgColor //bgColor
-                                , p_disp //the display
-                                , p_desc //description
-                                );
-    fieldContent = PrintField(origoX //cursorX
-                                , origoY + p_dispField.yDescScale * GFX_FONT_Y //cursorY
-                                , p_field.length()  //columns are 1/3 for desc than that of data
-                                , p_dispField.xFieldScale //textsize
-                                , p_dispField.yFieldScale
-                                , p_dispField.dataColor //fgColor
-                                , p_dispField.bgColor //bgColor
-                                , p_disp //the display
-                                , p_field //field content
-                                );
-    hasFrame = p_hasFrame;
-    _disp = p_disp;
-}
-
-class OneLineDataField
-{
-private:
-    PrintField fieldDescription;
-    PrintField fieldContent;
-    bool hasFrame;
-    Adafruit_GFX* _disp;
-
 public:
     OneLineDataField(
         String p_desc,                  //< the description of the data field
@@ -237,83 +208,67 @@ public:
         Adafruit_GFX *p_disp,            //pointer to display
         bool p_HasFrame =false
     );
-    uint16_t getOrigoX(void) { return fieldDescription.getOrigoX(); }
-    uint16_t getOrigoY(void) { return fieldDescription.getOrigoY(); }
-    uint16_t getWidthInPx(void) { return fieldContent.getWidthInPx() + fieldDescription.getWidthInPx(); }
-    uint16_t getHeightInPx(void) { return fieldContent.getHeightInPx(); }
+    OneLineDataField() {}
     //draw frame only at bottom & right 
-     void drawFrame()
-    {
-        uint16_t
-            //lower left corner 1px up
-            xLL = getOrigoX(),
-            yLL = getOrigoY() + getHeightInPx() - 1,
-            //lower right corner 1px left 1px up
-            xLR = getOrigoX() + getWidthInPx() - 1,
-            yLR = getOrigoY() + getHeightInPx() - 1,
-            //upper right corner 1px left
-            xUR = getOrigoX() + getWidthInPx() - 1,
-            yUR = getOrigoY();
-        _disp->drawLine(xLL, yLL, xLR, yLR, fieldDescription.getFgColor());
-        _disp->drawLine(xUR, yUR, xLR, yLR, fieldDescription.getFgColor());
-    }
-
-  void reprint(void) //reprints the entire datafield
-        {
-            fieldDescription.display();
-            fieldContent.display(); 
-            if (hasFrame) drawFrame();
-        }
-    void refreshContent(void) //reprints only the content
-        {
-            fieldContent.display(); 
-            if (hasFrame) drawFrame();
-        }
-    void setContentLeft(String p_content, const char p_padding = ' ') {fieldContent.setContentPadRight(p_content, p_padding);}
-    void setContentRight(String p_content, const char p_padding = ' ') {fieldContent.setContentPadLeft(p_content,  p_padding);}
-    void setDescriptionLeft(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadRight(p_content, p_padding);}
-    void setDescriptionRight(String p_content, const char p_padding = ' ') {fieldDescription.setContentPadLeft(p_content, p_padding);}
+    virtual void drawFrame();
+    virtual uint16_t getWidthInPx(void) { return fieldContent.getWidthInPx() + fieldDescription.getWidthInPx(); }
+    virtual uint16_t getHeightInPx(void) { return fieldContent.getHeightInPx() ; }
 
     //~OneLineDataField();
 };
 
-
-OneLineDataField::OneLineDataField(
-    String p_desc,                  //< the description of the data field
-    String p_field,                 //< the initial content of the datafield.
-                                    //  Note: it will determine the height of the field
-    OneLineFieldDescriptor p_dispField, //< the type of the dataField
-    Adafruit_GFX *p_disp,            //pointer to display
-        bool p_hasFrame
-        )
+/// Five element DataField combo:
+/// [desc]+--+[unit]
+/// [sign]+--+[frct]
+/// xStretch is the same. Data field has double yStretch of small fields
+/// Struct for attributes of a one line data field. Bakcground color and
+/// horizontal px stretching is uniform across the field.
+/// Small subfields assumed 1 char wide
+typedef struct
 {
-    uint16_t origoX= p_dispField.displayCol * GFX_FONT_X * p_dispField.xScale;
-    uint16_t origoY= p_dispField.displayRow * p_dispField.yFieldScale * GFX_FONT_Y;
-    if (p_dispField.yDescScale> p_dispField.yFieldScale) p_dispField.yDescScale = p_dispField.yFieldScale;
-    
-    fieldDescription = PrintField(origoX //cursorX
-                                , origoY //cursorY
-                                , p_desc.length()  //columns 
-                                , p_dispField.xScale //textsize
-                                , p_dispField.yDescScale
-                                , p_dispField.descriptionColor //fgColor, almost black on TFT, black on LCD
-                                , p_dispField.bgColor //bgColor
-                                , p_disp //the display
-                                , p_desc //description
-                                );
-    fieldContent = PrintField(origoX + p_desc.length() * GFX_FONT_X * p_dispField.xScale  //cursorX
-                                , origoY  //cursorY
-                                , p_field.length()  //columns are 1/3 for desc than that of data
-                                , p_dispField.xScale //textsize
-                                , p_dispField.yFieldScale
-                                , p_dispField.dataColor //fgColor
-                                , p_dispField.bgColor //bgColor
-                                , p_disp //the display
-                                , p_field //field content
-                                );
-    hasFrame = p_hasFrame;
-    _disp = p_disp;
-}
+    uint16_t dataColor;        //< txt. color of the data field
+    uint16_t descriptionColor; //< txt. color for desc. field
+    uint16_t bgColor;          //< shared bg. color of both fields
+    uint8_t displayRow = 0;    //< display row# assuming identical fields everywhere on display
+    uint8_t displayCol = 0;    //< dislay column# assuming identical fields everywhere on display
+    uint8_t xScale = 2;        //< horizontal pixel stretching factor (ADafruit_GFX default font is 6x8 px) 
+    uint8_t yScale = 2;        //< vertical base pixel stretching factor for the left and rigth small field stretch
+    uint8_t xScale2 = 2;        //< horizontal pixel stretching factor (ADafruit_GFX default font is 6x8 px) 
+    uint8_t yScale2 = 3;       //< Height multiply factor for the  DataField in the middle 
+} Combo5FieldDescriptor;
 
+class Combo5DataField : public DataField 
+{
+protected:
+    PrintField fieldSign;
+    PrintField fieldUnit;
+    PrintField fieldFract;
+public:
+    Combo5DataField(
+        String p_desc,                  //< the description of the data field. Upper left
+        String p_sign,                  //< a lower left field, e.g., for sign.  The longer of [desc] and [sign] will set width for both  
+        String p_field,                 //< the initial content of the datafield.
+        String p_unit,                  //< the unit field of the data field. Upper right 
+        String p_fract,                  //< a lower right field, e.g., for fract  The longer of [sign] and [fract] will set width for both  
+        
+        Combo5FieldDescriptor p_dispField, //< the type of the dataField
+        Adafruit_GFX *p_disp,            //pointer to display
+        bool p_HasFrame =false
+    );
+    uint16_t getWidthInPx(void) { return fieldContent.getWidthInPx() + fieldDescription.getWidthInPx() + fieldFract.getWidthInPx(); }
+    uint16_t getHeightInPx(void) { return fieldContent.getHeightInPx() ; }
+    //draw frame only at bottom & right 
+    void drawFrame();
+    void reprint(void); //reprints the entire datafield
+    void refreshContent(void); //reprints only the content + fractional
+    void invertColors(void); 
+    void setSignLeft(String p_content, const char p_padding = ' ') {fieldSign.setContentPadRight(p_content, p_padding);}
+    void setSignRight(String p_content, const char p_padding = ' ') {fieldSign.setContentPadLeft(p_content,  p_padding);}
+    void setUnitLeft(String p_content, const char p_padding = ' ') {fieldUnit.setContentPadRight(p_content, p_padding);}
+    void setUnitRight(String p_content, const char p_padding = ' ') {fieldUnit.setContentPadLeft(p_content, p_padding);}
+    void setFractLeft(String p_content, const char p_padding = ' ') {fieldFract.setContentPadRight(p_content, p_padding);}
+    void setFractRight(String p_content, const char p_padding = ' ') {fieldFract.setContentPadLeft(p_content, p_padding);}
+    
+};
 
 #endif //DATAFIELD_H

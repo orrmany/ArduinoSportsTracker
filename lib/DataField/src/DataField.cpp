@@ -204,9 +204,9 @@ Combo5DataField::Combo5DataField(
         bool p_hasFrame 
     )
 {
-    uint16_t origoX= p_dispField.displayCol * GFX_FONT_X * p_dispField.xScale;
-    uint16_t origoY= p_dispField.displayRow * p_dispField.yScale * 2* GFX_FONT_Y;
     if (p_dispField.yScale2< p_dispField.yScale*2) p_dispField.yScale2 =p_dispField.yScale*2;
+    uint16_t origoX= p_dispField.displayCol * GFX_FONT_X * p_dispField.xScale2;
+    uint16_t origoY= p_dispField.displayRow * GFX_FONT_Y * p_dispField.yScale2;
 
     int diff = (int)p_sign.length() - (int)p_desc.length();
     //if [sign] is longer than [desc] then pad [desc] from right
@@ -243,14 +243,14 @@ Combo5DataField::Combo5DataField(
     fieldContent = PrintField(origoX + p_desc.length() * GFX_FONT_X * p_dispField.xScale  //cursorX
                                 , origoY  //cursorY
                                 , p_field.length()  //columns are 1/3 for desc than that of data
-                                , p_dispField.xScale //textsize
+                                , p_dispField.xScale2 //textsize
                                 , p_dispField.yScale2
                                 , p_dispField.dataColor //fgColor
                                 , p_dispField.bgColor //bgColor
                                 , p_disp //the display
                                 , p_field //field content
                                 );
-    fieldUnit = PrintField(origoX + (p_desc.length() + p_field.length())* GFX_FONT_X * p_dispField.xScale  //cursorX
+    fieldUnit = PrintField(origoX + GFX_FONT_X * (p_desc.length() * p_dispField.xScale  + p_field.length() *  p_dispField.xScale2) //cursorX
                                 , origoY  //cursorY
                                 , p_unit.length()  //columns
                                 , p_dispField.xScale //textsize
@@ -260,7 +260,7 @@ Combo5DataField::Combo5DataField(
                                 , p_disp //the display
                                 , p_unit //field content
                                 );
-    fieldFract = PrintField(origoX + (p_desc.length() + p_field.length())* GFX_FONT_X * p_dispField.xScale  //cursorX
+    fieldFract = PrintField(origoX +  GFX_FONT_X * (p_desc.length() * p_dispField.xScale  + p_field.length() *  p_dispField.xScale2)  //cursorX
                                 , origoY + GFX_FONT_Y * (p_dispField.yScale2-p_dispField.yScale)  //cursorY
                                 , p_unit.length()  //columns
                                 , p_dispField.xScale //textsize
