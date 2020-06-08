@@ -39,7 +39,7 @@ String gpx_trkpt_extensions(String ATEMP, String HR, String CAD)
 {
     String tmp= String("");
 
-    if (ATEMP+HR+CAD == "") //if all extensions are missing
+    if (ATEMP == "" && HR == "" && CAD =="") //if all extensions are missing
       ; //return empty 
     else //there is at least 1 extension
     {
@@ -47,10 +47,16 @@ String gpx_trkpt_extensions(String ATEMP, String HR, String CAD)
       tmp += "        <ns3:TrackPointExtension>\n";
       if (ATEMP != "")
         tmp += "          <ns3:atemp>"+ATEMP+"</ns3:atemp>\n";
+      else 
+        tmp += "          <noATEMP/>\n";
       if (HR != "")
         tmp += "          <ns3:hr>"+HR+"</ns3:hr>\n";
+      else 
+        tmp += "          <noHR/>\n";
       if ( CAD!="") 
         tmp += "          <ns3:cad>"+CAD+"</ns3:cad>\n";
+      else 
+        tmp += "          <noCAD/>\n";
       tmp += "        </ns3:TrackPointExtension>\n";
       tmp += "      </extensions>\n";
     } //there is at least 1 extension
