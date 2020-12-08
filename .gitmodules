@@ -1,3 +1,9 @@
 [submodule "lib/SDAntplus"]
 	path = lib/SDAntplus
 	url = https://github.com/orrmany/SDAntplus.git
+[submodule "lib/AdafruitGfxDataScreen"]
+	path = lib/AdafruitGfxDataScreen
+	url = https://github.com/orrmany/AdafruitGfxDataScreen.git
+[submodule "lib/FitnessFileSystems"]
+	path = lib/FitnessFileSystems
+	url = https://github.com/orrmany/FitnessFileSystems.git
