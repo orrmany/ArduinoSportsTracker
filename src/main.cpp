@@ -831,10 +831,16 @@ void processCommand(String p_blecommand)
 
     bleuart.print("Baro. elevation:");
     bleuart.println(String(bmp.readAltitude(sealevelpressure), 2));
-    bleuart.print("Sealevel pressure ");
+    bleuart.print("Sealevel press.");
     bleuart.println("assumed as: " + String(sealevelpressure, 5));
     bleuart.print("GPS elevation:");
     bleuart.println(String(GPS.altitude));
+    bleuart.println("RTC:" + rtc.now().timestamp());
+    bleuart.printf("GPS:%d-%02d-%02dT", 2000 + GPS.year, GPS.month, GPS.day);
+    bleuart.printf("%02d:%02d:%02d\n", GPS.hour, GPS.minute, GPS.seconds);
+    bleuart.println("HRM:"+ String(currHR) + " ELE:" + String(currELE));
+    bleuart.println("SPM:"+ String(currRpm) + " TMP:" + String(currATEMP));
+    bleuart.println("Internal temp.:" + String(bmp.readTemperature()));
 
     if (activityRecording)
     {
@@ -1183,7 +1189,7 @@ void processGpsUpdate()
     {
       gpsUpdated = true; //counting updates
       if (activityFile && GPSFITLOG)
-        activityFile.println("<gpsUpdated/>");
+        activityFile.println("<positionUpdated/>");
 
       lastLatitude = GPS.latitudeDegrees;
       lastLongitude = GPS.longitudeDegrees;
@@ -1195,8 +1201,8 @@ void processGpsUpdate()
       fixIsLost = false;
     }
   }
-  else
-  {                                 //no fix
+  else //no fix
+  { 
     if (fix_detected && !fixIsLost) //we had fix earlier but we just lost it
     {
       if (activityFile)
@@ -1208,7 +1214,6 @@ void processGpsUpdate()
 
 void checkDisplayButtons(void)
 {
-  buttontimer = xTaskGetTickCount(); // reset the buttontimer
 
   //check miniTFT buttons
   uint32_t buttons = ss.readButtons();
@@ -1229,9 +1234,6 @@ void checkDisplayButtons(void)
 void refreshSensorDataFields()
 {
   //######################### refreshing display and sensor data
-  // if millis() or displayTimer wraps around, we'll just reset it
-  // approximately every X seconds or so, print out the current stats
-  displayTimer = xTaskGetTickCount(); // reset the displayTimer
 
   //----------------------------read sensors -----------
   ///elevation, ambient temp, heartrate, cadence
@@ -1300,6 +1302,14 @@ void refreshSensorDataFields()
   //---- elevation -----
   fieldEleBARO.updateContentLeft(String(bmp.readAltitude(sealevelpressure)));
   fieldEleGPS.updateContentRight(String(GPS.altitude));
+
+  //mark stale sensor data as such
+  if (displayTimer - hrm.newTicks >= pdMS_TO_TICKS(5000))
+    hrm.newRxData = false;
+  if (displayTimer - env.newTicks >= pdMS_TO_TICKS(5000))
+    env.newRxData = false;
+  if (displayTimer - sdm.newTicks >= pdMS_TO_TICKS(5000))
+    sdm.newRxData = false;
 
 } //refreshSensorDataFields
 
@@ -1425,8 +1435,9 @@ void addTrackPoint()
   // at updated positionm or at-least approximately every 1.199 seconds or so, write trkpts
   //if (gpsUpdated || (xTaskGetTickCount() - activityFileTimer >= pdMS_TO_TICKS(5000)) || (xTaskGetTickCount() < activityFileTimer)) //also take care of overflow
   activityFileTimer = xTaskGetTickCount(); // reset the buttontimer
-
+  lastNMEAfix=GPS.lastNMEA();
   String tstamp;
+
   //if (gpsUpdated) {
   char buffer[20];
   sprintf(buffer, "%d-%02d-%02dT%02d:%02d:%02d.%d", 2000 + GPS.year, GPS.month, GPS.day, GPS.hour, GPS.minute, GPS.seconds, 0 /*GPS.milliseconds*/);
@@ -1448,9 +1459,9 @@ void addTrackPoint()
     double latFix = GPS.latitude_fixed / (double)10000000;
     size_t written = activityFile.println(gpx_trkpt(String(GPS.secondsSinceFix()), String(latFix, 7), String(lonFix, 7), ELE, tstamp, ATEMP, HR, CAD, lastNMEAfix));
     //Serial.print("Recording is active, trkpt chars: "); Serial.println(written);
-    activityFile.println("<lastPosDeg lon='" + String(GPS.longitudeDegrees, 6) + "' lat='" + String(GPS.latitudeDegrees, 6) + "' />");
-    activityFile.println("<lastPos lon='" + String(GPS.longitude, 4) + "' lat='" + String(GPS.latitude, 4) + "' />");
-    activityFile.println("<lastPosFix  lon='" + String(lonFix, 6) + "' lat='" + String(latFix, 6) + "' fixlon='" + String(GPS.longitude_fixed) + "' fixlat='" + String(GPS.latitude_fixed) + "' />");
+    //activityFile.println("<lastPosDeg lon='" + String(GPS.longitudeDegrees, 6) + "' lat='" + String(GPS.latitudeDegrees, 6) + "' />");
+    //activityFile.println("<lastPos lon='" + String(GPS.longitude, 4) + "' lat='" + String(GPS.latitude, 4) + "' />");
+    //activityFile.println("<lastPosFix  lon='" + String(lonFix, 6) + "' lat='" + String(latFix, 6) + "' fixlon='" + String(GPS.longitude_fixed) + "' fixlat='" + String(GPS.latitude_fixed) + "' />");
     activityFile.println("<gpsFixQuality Q='" + String(GPS.fixquality) + "' S='" + String(GPS.satellites) + "' />");
     if (written == 0)
     {
@@ -1467,6 +1478,8 @@ void addTrackPoint()
 }
 
 uint8_t dollars = 0; //how many dollars in NMEA
+uint32_t loopStart=xTaskGetTickCount() * ( TickType_t ) 1000 / configTICK_RATE_HZ ;//(double) portTICK_PERIOD_MS;
+uint32_t loopStartOld=loopStart;// (double) portTICK_PERIOD_MS;
 uint16_t recchars=0; //how many chars read in a single loop
 void loop()
 {
@@ -1474,46 +1487,49 @@ void loop()
   char c;
   // read data from the GPS in the 'main loop'
   // read as long as GPS has something to say
+  // and not yet a full sentence. Process full
+  // sentences if there is any
   bool continuousRead=true; 
   while ( continuousRead && ( c = GPS.read() ) ) 
   {
-    if (GPSDEBUG) Serial.print(c);
-    if (c == '$')
-      dollars++;               //count dollars in a sentence
-    if (GPS.newNMEAreceived()) //if newline has been found
-    {
-      if (GPSDEBUG) Serial.print('\n');
-      if (GPSDEBUG && dollars >1 ) Serial.println("==> Multiple dollars detected");
-      continuousRead = false;
+      loopStartOld = loopStart;
+      loopStart=xTaskGetTickCount() * ( TickType_t ) 1000 / configTICK_RATE_HZ; //(double) portTICK_PERIOD_MS;
       // a tricky thing here is if we print the NMEA sentence, or data
       // we end up not listening and catching other sentences!
       // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-      String thisSentence = GPS.lastNMEA();
-      //thisSentence.trim(); //remove leading/trailoing whitespace
-      if (activityFile && GPSFITLOG)
+    if (GPSDEBUG) Serial.print(c);
+    if (c == '$') 
+      dollars++;               //count dollars in a sentence
+    if (GPS.newNMEAreceived()) //if newline has been found
+    {
+      continuousRead = false; //process the current sentence before reading further
+      if (GPSDEBUG) 
+      { 
+        Serial.print('\n');
+        if ( dollars >1 ) Serial.println("==> Multiple dollars in sentence were detected");
+        Serial.println("new NMEA: " + rtc.now().timestamp()+" millis="+ String(millis()) + "' loopStart='" + String(loopStart)+ "' loopStartOld='" + String(loopStartOld)+ "' loopGapMsec='" + String(loopStart-loopStartOld) +"'\n");
+      }
+      if (GPSFITLOG && activityFile) 
       {
-        activityFile.println("<new_NMEA rtc='" + rtc.now().timestamp() + "'>" + thisSentence + "</new_NMEA>");
+        activityFile.println("<new_NMEA rtc='" + rtc.now().timestamp() +  "'  millis='" + String(millis()) + "' loopStart='" + String(loopStart) +  "' loopGapMsec='" + String(loopStart-loopStartOld)+ "'>" + GPS.lastNMEA() + "</new_NMEA>");
         if (dollars > 1)
           activityFile.println("<multipleNMEAdetected count='" + String(dollars) + "'/>");
       }
-      if (GPSDEBUG)
-        Serial.print(rtc.now().timestamp()+" millis="+ String(millis()) + " new NMEA:" + thisSentence);
 
       bool parsed = GPS.parse(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
       if (!parsed)
       {
         if (activityFile && GPSFITLOG)
-          activityFile.println("<couldntParseNMEA rtc='" + rtc.now().timestamp() + "'/>");
+          activityFile.println("<couldntParseNMEA rtc='" + rtc.now().timestamp() + "'  millis='" + String(millis()) +"'/>");
       }
       else //parsed
       {
-        processGpsUpdate();
+        processGpsUpdate(); //this process the NMEA, but not the GUI update
       } //if newNMEA succesfully parsed
     }   // if newNMEA
     if (c == '\n')
       dollars = 0; //reset dollars at end of line
   }                //while GPS.read
-  if (GPSDEBUG && !continuousRead) Serial.println("Read loop exit with continuousRead==false!");
   
   //---- check ble commands -------------------------------------------------------
   if (bleuart.available())
@@ -1532,6 +1548,7 @@ void loop()
   // note: too frequent check will f*k up Serial1, hence GPS
   if ((xTaskGetTickCount() - buttontimer >= pdMS_TO_TICKS(120)) || (xTaskGetTickCount() < buttontimer)) //also take care of overflow
   {
+    buttontimer = xTaskGetTickCount(); // reset the buttontimer
     checkDisplayButtons();
   } // chek display buttons
 
@@ -1550,20 +1567,16 @@ void loop()
   //---- refresh sensors DataFields at every 1000msec
   if ((xTaskGetTickCount() - displayTimer >= pdMS_TO_TICKS(1000)) || (displayTimer > xTaskGetTickCount()))
   {
+    // if millis() or displayTimer wraps around, we'll just reset it
+    // approximately every X seconds or so, print out the current stats
+    displayTimer = xTaskGetTickCount(); // reset the displayTimer
+
     refreshSensorDataFields();
     measAndDisplayBattery();
-    //mark stale sensor data as sich
-    if (displayTimer - hrm.newTicks >= pdMS_TO_TICKS(5000))
-      hrm.newRxData = false;
-    if (displayTimer - env.newTicks >= pdMS_TO_TICKS(5000))
-      env.newRxData = false;
-    if (displayTimer - sdm.newTicks >= pdMS_TO_TICKS(5000))
-      sdm.newRxData = false;
   }
   if (gpsUpdated && activityRecording)
   {
     addTrackPoint();
     gpsUpdated = false;
   } //writing trkpts
-
-} //loops
+} //loop
